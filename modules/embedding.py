@@ -1,3 +1,7 @@
+import os
+# Menyembunyikan warning token jika Anda ingin mendownload model secara anonim/publik
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
 import torch
 import numpy as np
 from transformers import DistilBertTokenizer, DistilBertModel

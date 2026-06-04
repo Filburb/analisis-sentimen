@@ -78,7 +78,7 @@ nav_cols = st.columns(TOTAL_STEPS)
 for i in range(TOTAL_STEPS):
     target = i + 1
     with nav_cols[i]:
-        btn_type = "primary"if st.session_state.step == target else "secondary"
+        btn_type = "primary" if st.session_state.step == target else "secondary"
         if st.button(step_labels[i], key=f"btn_{target}", use_container_width=True, type=btn_type):
             ganti_halaman(target)
             st.rerun()
@@ -105,7 +105,7 @@ if st.session_state.step == 1:
                 st.metric("Total Baris", f"{len(df):,}")
 
                 st.markdown("**Preview data (10 baris pertama):**")
-                st.dataframe(df[['full_text']].head(10), use_container_width=True)
+                st.dataframe(df[['full_text']].head(10), width="stretch")
 
                 st.button(
                     "Lanjut ke Preprocessing ",
@@ -122,7 +122,7 @@ if st.session_state.step == 1:
         # Bagian ini disamakan dengan tampilan saat pertama kali upload
         st.metric("Total Baris", f"{len(df):,}")
         st.markdown("**Preview data (10 baris pertama):**")
-        st.dataframe(df[['full_text']].head(10), use_container_width=True)
+        st.dataframe(df[['full_text']].head(10), width="stretch")
         
         st.button("Lanjut ke Preprocessing ", on_click=ganti_halaman, args=(2,), type="primary")
 
@@ -149,7 +149,7 @@ elif st.session_state.step == 2:
             st.success("Preprocessing selesai.")
             
             st.markdown("**Preview hasil preprocessing:**")
-            st.dataframe(df_pre[['clean_text']].head(10), use_container_width=True)
+            st.dataframe(df_pre[['clean_text']].head(10), width="stretch")
         else:
             if st.button("Jalankan Preprocessing"):
                 from modules.preprocessing import run_preprocessing
@@ -175,7 +175,7 @@ elif st.session_state.step == 2:
                     st.success("Preprocessing selesai!")
                     
                     st.markdown("**Preview hasil preprocessing:**")
-                    st.dataframe(df_result[['clean_text']].head(10), use_container_width=True)
+                    st.dataframe(df_result[['clean_text']].head(10), width="stretch")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error saat preprocessing: {e}")
@@ -198,7 +198,7 @@ elif st.session_state.step == 2:
                 st.markdown("**Preview hasil pelabelan:**")
                 st.dataframe(
                     st.session_state.df_labeled[['clean_text', 'skor_positif', 'skor_negatif', 'total_skor', 'label']].head(10),
-                    use_container_width=True
+                    width="stretch"
                 )
                 st.button("Lanjut ke Embedding ", on_click=ganti_halaman, args=(3,), type="primary")
             else:
@@ -228,7 +228,7 @@ elif st.session_state.step == 2:
                         st.markdown("**Preview hasil pelabelan:**")
                         st.dataframe(
                             df_labeled[['clean_text', 'skor_positif', 'skor_negatif', 'total_skor', 'label']].head(10),
-                            use_container_width=True
+                            width="stretch"
                         )
                         st.button("Lanjut ke Embedding ", on_click=ganti_halaman, args=(3,), type="primary")
                     except Exception as e:
@@ -380,7 +380,7 @@ elif st.session_state.step == 5:
                     plot_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='gray')
                 )
-                st.plotly_chart(fig_pie, use_container_width=True)
+                st.plotly_chart(fig_pie, width="stretch")
 
         with col_kanan:
             st.markdown("### **Performance evaluation**")
@@ -430,7 +430,7 @@ elif st.session_state.step == 5:
                 index=[f"Actual {c}" for c in class_names],
                 columns=[f"Pred {c}" for c in class_names]
             )
-            st.dataframe(df_cm, use_container_width=True)
+            st.dataframe(df_cm, width="stretch")
 
         st.markdown("---")
         st.markdown("### **Kurva Training**")
@@ -448,8 +448,8 @@ elif st.session_state.step == 5:
         fig_acc.update_layout(title='Kurva Akurasi Model BiLSTM', xaxis_title='Epoch', yaxis_title='Akurasi')
 
         c1, c2 = st.columns(2)
-        c1.plotly_chart(fig_loss, use_container_width=True)
-        c2.plotly_chart(fig_acc,  use_container_width=True)
+        c1.plotly_chart(fig_loss, width="stretch")
+        c2.plotly_chart(fig_acc,  width="stretch")
 
         st.markdown("---")
         if st.button("Mulai Analisis Baru"):
