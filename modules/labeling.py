@@ -15,7 +15,6 @@ def load_inset():
     return _pos_dict, _neg_dict
 
 def hitung_skor(text: str, pos_dict: dict, neg_dict: dict) -> pd.Series:
-    """Menghitung skor sentimen per teks menggunakan InSet."""
     kata_kata = str(text).split()
     pos_score = 0
     neg_score = 0
@@ -37,11 +36,6 @@ def hitung_skor(text: str, pos_dict: dict, neg_dict: dict) -> pd.Series:
     return pd.Series([pos_score, neg_score, total, label])
 
 def run_labeling(df: pd.DataFrame, progress_callback=None) -> pd.DataFrame:
-    """
-    Melabeli DataFrame dengan sentimen menggunakan lexicon InSet.
-    Kolom input yang dibutuhkan: 'clean_text'
-    Kolom output yang ditambahkan: 'skor_positif', 'skor_negatif', 'total_skor', 'label'
-    """
     if progress_callback:
         progress_callback(0, 2, "Memuat lexicon InSet...")
 

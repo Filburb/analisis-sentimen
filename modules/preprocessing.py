@@ -16,13 +16,11 @@ def load_slang_dict():
     return _slang_dict
 
 def step_case_folding(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahap 1: Mengubah teks ke lowercase."""
     df = df.copy()
     df['clean_text'] = df['full_text'].astype(str).str.lower()
     return df
 
 def step_remove_url(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahap 2: Menghapus URL dari teks."""
     df = df.copy()
     df['clean_text'] = df['clean_text'].apply(
         lambda x: re.sub(r'http\S+|www\S+|https\S+', '', str(x), flags=re.MULTILINE)
@@ -30,12 +28,11 @@ def step_remove_url(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def step_clean_text(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahap 3: Menghapus mention, hashtag, emoji, dan karakter khusus."""
     def clean(text):
         text = str(text)
-        text = re.sub(r'\@\w+', '', text)       # hapus mention
-        text = re.sub(r'#', '', text)            # hapus simbol hashtag
-        text = re.sub(r'[^a-z\s]', ' ', text)   # hanya huruf & spasi
+        text = re.sub(r'\@\w+', '', text)
+        text = re.sub(r'#', '', text)
+        text = re.sub(r'[^a-z\s]', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
         return text
     df = df.copy()
@@ -43,7 +40,6 @@ def step_clean_text(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def step_normalisasi(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahap 4: Normalisasi kata slang ke kata formal."""
     slang_dict = load_slang_dict()
     def normalisasi(text):
         kata_kata = str(text).split()
@@ -53,7 +49,6 @@ def step_normalisasi(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def step_filter(df: pd.DataFrame) -> pd.DataFrame:
-    """Tahap 5: Filter teks kosong, duplikat, dan non-Indonesia."""
     df = df.copy()
     df['clean_text'] = df['clean_text'].replace(r'^\s*$', pd.NA, regex=True)
     df = df.dropna(subset=['clean_text'])
@@ -71,10 +66,6 @@ def step_filter(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def run_preprocessing(df_raw: pd.DataFrame, progress_callback=None) -> pd.DataFrame:
-    """
-    Menjalankan seluruh pipeline preprocessing secara berurutan.
-    progress_callback(step: int, total: int, pesan: str) dipanggil setiap tahap.
-    """
     steps = [
         (step_case_folding,  "Case folding (lowercase)..."),
         (step_remove_url,    "Menghapus URL..."),

@@ -4,7 +4,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-# KONFIGURASI HALAMAN
 st.set_page_config(page_title="Analisis Sentimen BiLSTM", layout="wide")
 
 TOTAL_STEPS = 5
@@ -15,7 +14,7 @@ def init_state():
         'df_raw': None,         
         'df_preprocessed': None,
         'df_labeled': None,
-        'X_features': None,     # np.ndarray (N, 128, 768)
+        'X_features': None,     
         'y_labels': None,       
         'training_result': None,
         'epoch_logs': None,    
@@ -29,17 +28,12 @@ init_state()
 def ganti_halaman(nomor):
     st.session_state.step = nomor
 
-# STYLING
 st.markdown("""
 <style>
-    /* Hapus warna background statis agar mengikuti tema aktif Streamlit */
-    /* .stApp { background-color: #f8f9fb; } */
-
     .main-title {
         text-align: center; 
         font-size: 32px; 
         font-weight: 800;
-        /* Gunakan variabel teks bawaan agar otomatis putih di dark mode & hitam di light mode */
         color: var(--text-color); 
         margin-bottom: 0;
     }
@@ -47,7 +41,7 @@ st.markdown("""
         text-align: center; 
         font-size: 18px;
         color: var(--text-color);
-        opacity: 0.7; /* Menggunakan opacity sebagai pengganti warna abu-abu statis */
+        opacity: 0.7; 
         margin-bottom: 30px;
     }
     div.stButton > button {
@@ -58,7 +52,6 @@ st.markdown("""
         transition: 0.3s;
     }
     .metric-card {
-        /* Gunakan warna latar belakang sekunder dari tema Streamlit */
         background-color: var(--secondary-background-color);
         color: var(--text-color);
         border-radius: 12px;
@@ -78,14 +71,13 @@ nav_cols = st.columns(TOTAL_STEPS)
 for i in range(TOTAL_STEPS):
     target = i + 1
     with nav_cols[i]:
-        btn_type = "primary"if st.session_state.step == target else "secondary"
+        btn_type = "primary" if st.session_state.step == target else "secondary"
         if st.button(step_labels[i], key=f"btn_{target}", use_container_width=True, type=btn_type):
             ganti_halaman(target)
             st.rerun()
 
 st.markdown("---")
 
-# UPLOAD DATASET
 if st.session_state.step == 1:
     st.subheader("Upload Dataset")
     st.write("Pilih file CSV yang berisi data teks untuk analisis sentimen.")
@@ -119,14 +111,11 @@ if st.session_state.step == 1:
         df = st.session_state.df_raw
         st.info("Dataset sudah di-upload sebelumnya.")
         
-        # Bagian ini disamakan dengan tampilan saat pertama kali upload
         st.metric("Total Baris", f"{len(df):,}")
         st.markdown("**Preview data (10 baris pertama):**")
         st.dataframe(df[['full_text']].head(10), use_container_width=True)
         
         st.button("Lanjut ke Preprocessing ", on_click=ganti_halaman, args=(2,), type="primary")
-
-# PREPROCESSING + LABELING INSET
 
 elif st.session_state.step == 2:
     st.subheader("Preprocessing & Pelabelan Data")
@@ -180,7 +169,6 @@ elif st.session_state.step == 2:
                 except Exception as e:
                     st.error(f"Error saat preprocessing: {e}")
 
-        # Labeling InSet
         if st.session_state.df_preprocessed is not None:
             st.markdown("---")
             st.markdown("#### Tahap 2: Pelabelan Sentimen (Lexicon InSet)")
@@ -234,8 +222,6 @@ elif st.session_state.step == 2:
                     except Exception as e:
                         st.error(f"Error pelabelan: {e}")
 
-#  EMBEDDING
-
 elif st.session_state.step == 3:
     st.subheader("Ekstraksi Fitur DistilBERT")
     st.write(
@@ -280,8 +266,6 @@ elif st.session_state.step == 3:
                 except Exception as e:
                     st.error(f"Error embedding: {e}")
 
-
-# TRAINING
 elif st.session_state.step == 4:
     st.subheader("Training Model BiLSTM")
     if st.session_state.X_features is None:
@@ -307,12 +291,8 @@ elif st.session_state.step == 4:
                 f"Training sudah selesai ({last_e} epoch). "
                 f"Val Acc terakhir: **{hist['test_acc'][-1]:.4f}**"
             )
-            col_btn1, col_btn2 = st.columns(2)
-            col_btn1.button("Lanjut ke Evaluasi", on_click=ganti_halaman, args=(5,), type="primary")
-            if col_btn2.button("Train Ulang"):
-                st.session_state.training_result = None
-                st.session_state.epoch_logs = None
-                st.rerun()
+            
+            st.button("Lanjut ke Evaluasi", on_click=ganti_halaman, args=(5,), type="primary")
 
         else:
             if st.button("Mulai Training Model"):
@@ -346,8 +326,6 @@ elif st.session_state.step == 4:
                 except Exception as e:
                     st.error(f"Error saat training: {e}")
 
-
-# EVALUASI
 elif st.session_state.step == 5:
     st.markdown('<p class="main-title">Hasil Evaluasi Model</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-title">Analisis performa klasifikasi sentimen BiLSTM</p>', unsafe_allow_html=True)

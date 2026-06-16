@@ -7,8 +7,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 
-# ARSITEKTUR MODEL
-
 class BiLSTMClassifier(nn.Module):
     def __init__(self, input_dim=768, hidden_dim=128, num_classes=3, dropout_rate=0.5):
         super(BiLSTMClassifier, self).__init__()
@@ -21,16 +19,24 @@ class BiLSTMClassifier(nn.Module):
         )
         self.dropout = nn.Dropout(dropout_rate)
         self.fc = nn.Linear(hidden_dim * 2, num_classes)
+        self._init_weights()
+
+    def _init_weights(self):
+        for name, param in self.lstm.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.kaiming_uniform_(param, nonlinearity='tanh')
+            elif 'weight_hh' in name:
+                nn.init.kaiming_uniform_(param, nonlinearity='tanh')
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+        nn.init.kaiming_uniform_(self.fc.weight, nonlinearity='linear')
+        nn.init.zeros_(self.fc.bias)
 
     def forward(self, x):
-        # x: (batch, seq_len=128, input_dim=768)
         lstm_out, (hn, cn) = self.lstm(x)
-        hidden_concat = torch.cat((hn[0], hn[1]), dim=1)  # (batch, 256)
+        hidden_concat = torch.cat((hn[0], hn[1]), dim=1)
         out = self.fc(self.dropout(hidden_concat))
         return out
-
-
-# TRAINING & EVALUASI
 
 def run_training(
     X_features: np.ndarray,
@@ -40,26 +46,12 @@ def run_training(
     learning_rate: float = 0.0001,
     epoch_callback=None
 ) -> dict:
-    """
-    Melatih BiLSTM dari embedding DistilBERT.
-
-    Parameters
-    X_features : np.ndarray, shape (N, 128, 768)
-    y_labels   : np.ndarray, array label string ('Positif', 'Negatif', 'Netral')
-    epoch_callback(epoch, total, log_str) : dipanggil setiap akhir epoch
-
-    Returns
-    -------
-    dict berisi: model, label_encoder, history, classification_report, confusion_matrix
-    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Encode label
     le = LabelEncoder()
     y_encoded = le.fit_transform(y_labels)
     num_classes = len(le.classes_)
 
-    # Train / Test split (80/20, stratified)
     X_train, X_test, y_train, y_test = train_test_split(
         X_features, y_encoded,
         test_size=0.2,
@@ -67,7 +59,6 @@ def run_training(
         stratify=y_encoded
     )
 
-    # Konversi ke Tensor
     X_train_t = torch.tensor(X_train, dtype=torch.float32)
     y_train_t = torch.tensor(y_train, dtype=torch.long)
     X_test_t  = torch.tensor(X_test,  dtype=torch.float32)
@@ -76,7 +67,6 @@ def run_training(
     train_loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=batch_size, shuffle=True)
     test_loader  = DataLoader(TensorDataset(X_test_t,  y_test_t),  batch_size=batch_size, shuffle=False)
 
-    # Inisialisasi model
     model = BiLSTMClassifier(input_dim=768, hidden_dim=128, num_classes=num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -87,7 +77,6 @@ def run_training(
     }
 
     for epoch in range(epochs):
-        # Training 
         model.train()
         running_loss, correct, total = 0.0, 0, 0
         for inputs, labels in train_loader:
@@ -105,7 +94,6 @@ def run_training(
         train_loss = running_loss / len(train_loader)
         train_acc  = correct / total
 
-        # Evaluasi
         model.eval()
         test_loss, correct_test, total_test = 0.0, 0, 0
         with torch.no_grad():
@@ -134,7 +122,6 @@ def run_training(
         if epoch_callback:
             epoch_callback(epoch + 1, epochs, log)
 
-    # Predictions
     model.eval()
     all_preds, all_targets = [], []
     with torch.no_grad():

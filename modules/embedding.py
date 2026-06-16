@@ -21,10 +21,6 @@ def get_model():
     return _tokenizer, _model, _device
 
 def extract_features(text_list: list, progress_callback=None) -> np.ndarray:
-    """
-    Mengekstrak sequence embedding dari DistilBERT.
-    Output shape (N, 128, 768).
-    """
     tokenizer, model, device = get_model()
     all_embeddings = []
     total_batches = (len(text_list) + BATCH_SIZE - 1) // BATCH_SIZE
@@ -46,7 +42,6 @@ def extract_features(text_list: list, progress_callback=None) -> np.ndarray:
         with torch.no_grad():
             output = model(input_ids=input_ids, attention_mask=attention_mask)
 
-        # last_hidden_state shape: (batch, 128, 768)
         all_embeddings.append(output.last_hidden_state.cpu().numpy())
 
         if progress_callback:
