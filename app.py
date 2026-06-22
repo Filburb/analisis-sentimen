@@ -275,7 +275,7 @@ elif st.session_state.step == 4:
         X = st.session_state.X_features
         y = st.session_state.y_labels
 
-        epochs = 10
+        epochs = 7
         batch_size = 32
         lr = 0.0001
 
@@ -292,7 +292,14 @@ elif st.session_state.step == 4:
                 f"Val Acc terakhir: **{hist['test_acc'][-1]:.4f}**"
             )
             
-            st.button("Lanjut ke Evaluasi", on_click=ganti_halaman, args=(5,), type="primary")
+            col_lanjut, col_ulang = st.columns(2)
+            with col_lanjut:
+                st.button("Lanjut ke Evaluasi", on_click=ganti_halaman, args=(5,), type="primary", use_container_width=True)
+            with col_ulang:
+                if st.button("Train Ulang", use_container_width=True):
+                    st.session_state.training_result = None
+                    st.session_state.epoch_logs = None
+                    st.rerun()
 
         else:
             if st.button("Mulai Training Model"):

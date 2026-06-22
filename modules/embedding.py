@@ -4,7 +4,7 @@ from transformers import DistilBertTokenizer, DistilBertModel
 
 MODEL_NAME = 'cahya/distilbert-base-indonesian'
 MAX_LENGTH = 128
-BATCH_SIZE = 16
+BATCH_SIZE = 32
 
 _tokenizer = None
 _model = None

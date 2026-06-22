@@ -24,12 +24,12 @@ class BiLSTMClassifier(nn.Module):
     def _init_weights(self):
         for name, param in self.lstm.named_parameters():
             if 'weight_ih' in name:
-                nn.init.kaiming_uniform_(param, nonlinearity='tanh')
+                nn.init.xavier_uniform_(param)
             elif 'weight_hh' in name:
-                nn.init.kaiming_uniform_(param, nonlinearity='tanh')
+                nn.init.xavier_uniform_(param)
             elif 'bias' in name:
                 nn.init.zeros_(param)
-        nn.init.kaiming_uniform_(self.fc.weight, nonlinearity='linear')
+        nn.init.xavier_uniform_(self.fc.weight)
         nn.init.zeros_(self.fc.bias)
 
     def forward(self, x):
