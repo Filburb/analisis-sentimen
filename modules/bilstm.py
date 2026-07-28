@@ -148,4 +148,6 @@ def run_training(
         'class_names':  list(le.classes_),
         'n_train':      len(X_train),
         'n_test':       len(X_test),
+        'y_test': all_targets,
+        'y_pred': all_preds
     }

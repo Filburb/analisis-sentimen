@@ -437,8 +437,71 @@ elif st.session_state.step == 5:
         c2.plotly_chart(fig_acc,  use_container_width=True)
 
         st.markdown("---")
+        
+        from sklearn.model_selection import train_test_split
+        from sklearn.preprocessing import LabelEncoder
+        import io
+
+        df_labeled = st.session_state.df_labeled
+        kolom_teks = 'clean_text' if 'clean_text' in df_labeled.columns else df_labeled.columns[0]
+        
+        le = LabelEncoder()
+        y_encoded = le.fit_transform(st.session_state.y_labels)
+        
+        train_idx, test_idx = train_test_split(
+            range(len(df_labeled)),
+            test_size=0.2,
+            random_state=42,
+            stratify=y_encoded
+        )
+        
+        df_test = df_labeled.iloc[test_idx]
+        teks_uji = df_test[kolom_teks].values
+        y_test_labels = [class_names[int(i)] for i in result['y_test']]
+        y_pred_labels = [class_names[int(i)] for i in result['y_pred']]
+        
+        df_excel = pd.DataFrame({
+            'Teks': teks_uji,
+            'Hasil Prediksi': y_pred_labels,
+            'Hasil Aktual': y_test_labels
+        })
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_excel.to_excel(writer, index=False, sheet_name='Hasil Akhir Evaluasi')
+        
+        st.markdown("""
+        <style>
+            .div-tombol-berdampingan {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+            .div-tombol-berdampingan div {
+                display: inline-block;
+                width: auto !important;
+            }
+            .div-tombol-berdampingan button {
+                width: auto !important;
+                padding: 6px 16px !important;
+                font-size: 14px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="div-tombol-berdampingan">', unsafe_allow_html=True)
+        
+        st.download_button(
+            label="Unduh Hasil Prediksi (Excel)",
+            data=buffer.getvalue(),
+            file_name="hasil_analisis_sentimen_bilstm.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
         if st.button("Mulai Analisis Baru"):
             for k in ['df_raw', 'df_preprocessed', 'df_labeled', 'X_features', 'y_labels', 'training_result', 'epoch_logs']:
                 st.session_state[k] = None
             ganti_halaman(1)
             st.rerun()
+            
+        st.markdown('</div>', unsafe_allow_html=True)
