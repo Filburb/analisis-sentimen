@@ -15,6 +15,7 @@ def init_state():
         'df_preprocessed': None,
         'df_labeled': None,
         'X_features': None,     
+        'lengths': None,
         'y_labels': None,       
         'training_result': None,
         'epoch_logs': None,    
@@ -252,10 +253,11 @@ elif st.session_state.step == 3:
                     status_emb.info(pesan)
 
                 try:
-                    X = extract_features(teks_list, progress_callback=cb_emb)
+                    X, lengths = extract_features(teks_list, progress_callback=cb_emb)
                     y = df_labeled['label'].values
 
                     st.session_state.X_features = X
+                    st.session_state.lengths    = lengths
                     st.session_state.y_labels   = y
 
                     prog_emb.progress(100)
@@ -274,10 +276,7 @@ elif st.session_state.step == 4:
     else:
         X = st.session_state.X_features
         y = st.session_state.y_labels
-
-        epochs = 7
-        batch_size = 32
-        lr = 0.0001
+        lengths = st.session_state.lengths
 
         if st.session_state.training_result is not None:
             if st.session_state.epoch_logs:
@@ -286,11 +285,21 @@ elif st.session_state.step == 4:
             result = st.session_state.training_result
             hist   = result['history']
             last_e = len(hist['train_loss'])
-            
-            st.success(
-                f"Training sudah selesai ({last_e} epoch). "
-                f"Val Acc terakhir: **{hist['test_acc'][-1]:.4f}**"
-            )
+            best_epoch    = result.get('best_epoch', last_e)
+            stopped_early = result.get('stopped_early', False)
+
+            if stopped_early:
+                st.success(
+                    f"Training berhenti otomatis (early stopping) di epoch {last_e}. "
+                    f"Bobot terbaik diambil dari **epoch {best_epoch}**, "
+                    f"Val Acc terbaik: **{hist['test_acc'][best_epoch-1]:.4f}**"
+                )
+            else:
+                st.success(
+                    f"Training sudah selesai ({last_e} epoch, tidak early-stop). "
+                    f"Bobot terbaik diambil dari **epoch {best_epoch}**, "
+                    f"Val Acc terbaik: **{hist['test_acc'][best_epoch-1]:.4f}**"
+                )
             
             col_lanjut, col_ulang = st.columns(2)
             with col_lanjut:
@@ -302,6 +311,15 @@ elif st.session_state.step == 4:
                     st.rerun()
 
         else:
+            col_ep, col_pat = st.columns(2)
+            with col_ep:
+                max_epochs = st.number_input("Maksimal Epoch", min_value=1, max_value=200, value=20, step=1)
+            with col_pat:
+                patience = st.number_input(
+                    "Patience (early stopping)", min_value=1, max_value=50, value=3, step=1,
+                    help="Training dihentikan otomatis kalau Val Loss tidak membaik selama sekian epoch berturut-turut."
+                )
+
             if st.button("Mulai Training Model"):
                 from modules.bilstm import run_training
 
@@ -317,9 +335,9 @@ elif st.session_state.step == 4:
                 try:
                     result = run_training(
                         X, y,
-                        epochs=epochs,
-                        batch_size=batch_size,
-                        learning_rate=lr,
+                        lengths=lengths,
+                        epochs=int(max_epochs),
+                        patience=int(patience),
                         epoch_callback=cb_epoch
                     )
                     
@@ -419,8 +437,13 @@ elif st.session_state.step == 5:
 
         st.markdown("---")
         st.markdown("### **Kurva Training**")
-        hist     = result['history']
-        ep_range = list(range(1, len(hist['train_loss']) + 1))
+        hist        = result['history']
+        ep_range    = list(range(1, len(hist['train_loss']) + 1))
+        best_epoch  = result.get('best_epoch', len(ep_range))
+        if result.get('stopped_early', False):
+            st.caption(f"Early stopping aktif — training berhenti di epoch {len(ep_range)}, bobot model diambil dari epoch terbaik: **{best_epoch}**.")
+        else:
+            st.caption(f"Training selesai penuh {len(ep_range)} epoch. Bobot model diambil dari epoch terbaik: **{best_epoch}**.")
 
         fig_loss = go.Figure()
         fig_loss.add_trace(go.Scatter(x=ep_range, y=hist['train_loss'], name='Train Loss', line=dict(color='blue')))
@@ -437,8 +460,71 @@ elif st.session_state.step == 5:
         c2.plotly_chart(fig_acc,  use_container_width=True)
 
         st.markdown("---")
+        
+        from sklearn.model_selection import train_test_split
+        from sklearn.preprocessing import LabelEncoder
+        import io
+
+        df_labeled = st.session_state.df_labeled
+        kolom_teks = 'clean_text' if 'clean_text' in df_labeled.columns else df_labeled.columns[0]
+        
+        le = LabelEncoder()
+        y_encoded = le.fit_transform(st.session_state.y_labels)
+        
+        train_idx, test_idx = train_test_split(
+            range(len(df_labeled)),
+            test_size=0.2,
+            random_state=42,
+            stratify=y_encoded
+        )
+        
+        df_test = df_labeled.iloc[test_idx]
+        teks_uji = df_test[kolom_teks].values
+        y_test_labels = [class_names[int(i)] for i in result['y_test']]
+        y_pred_labels = [class_names[int(i)] for i in result['y_pred']]
+        
+        df_excel = pd.DataFrame({
+            'Teks': teks_uji,
+            'Hasil Prediksi': y_pred_labels,
+            'Hasil Aktual': y_test_labels
+        })
+        
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_excel.to_excel(writer, index=False, sheet_name='Hasil Akhir Evaluasi')
+        
+        st.markdown("""
+        <style>
+            .div-tombol-berdampingan {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+            .div-tombol-berdampingan div {
+                display: inline-block;
+                width: auto !important;
+            }
+            .div-tombol-berdampingan button {
+                width: auto !important;
+                padding: 6px 16px !important;
+                font-size: 14px !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div class="div-tombol-berdampingan">', unsafe_allow_html=True)
+        
+        st.download_button(
+            label="Unduh Hasil Prediksi (Excel)",
+            data=buffer.getvalue(),
+            file_name="hasil_analisis_sentimen_bilstm.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
         if st.button("Mulai Analisis Baru"):
-            for k in ['df_raw', 'df_preprocessed', 'df_labeled', 'X_features', 'y_labels', 'training_result', 'epoch_logs']:
+            for k in ['df_raw', 'df_preprocessed', 'df_labeled', 'X_features', 'lengths', 'y_labels', 'training_result', 'epoch_logs']:
                 st.session_state[k] = None
             ganti_halaman(1)
             st.rerun()
+            
+        st.markdown('</div>', unsafe_allow_html=True)

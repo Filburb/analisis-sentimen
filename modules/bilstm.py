@@ -1,6 +1,8 @@
+import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn.utils.rnn import pack_padded_sequence
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -32,8 +34,14 @@ class BiLSTMClassifier(nn.Module):
         nn.init.xavier_uniform_(self.fc.weight)
         nn.init.zeros_(self.fc.bias)
 
-    def forward(self, x):
-        lstm_out, (hn, cn) = self.lstm(x)
+    def forward(self, x, lengths=None):
+        if lengths is not None:
+            packed = pack_padded_sequence(
+                x, lengths.cpu(), batch_first=True, enforce_sorted=False
+            )
+            _, (hn, cn) = self.lstm(packed)
+        else:
+            _, (hn, cn) = self.lstm(x)
         hidden_concat = torch.cat((hn[0], hn[1]), dim=1)
         out = self.fc(self.dropout(hidden_concat))
         return out
@@ -41,9 +49,12 @@ class BiLSTMClassifier(nn.Module):
 def run_training(
     X_features: np.ndarray,
     y_labels: np.ndarray,
-    epochs: int = 10,
+    lengths: np.ndarray = None,
+    epochs: int = 20,
     batch_size: int = 32,
     learning_rate: float = 0.0001,
+    patience: int = 3,
+    min_delta: float = 0.0,
     epoch_callback=None
 ) -> dict:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -52,37 +63,61 @@ def run_training(
     y_encoded = le.fit_transform(y_labels)
     num_classes = len(le.classes_)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_features, y_encoded,
-        test_size=0.2,
-        random_state=42,
-        stratify=y_encoded
+    idx = np.arange(len(X_features))
+    idx_train, idx_test = train_test_split(
+        idx, test_size=0.2, random_state=42, stratify=y_encoded
     )
+
+    X_train, X_test = X_features[idx_train], X_features[idx_test]
+    y_train, y_test = y_encoded[idx_train], y_encoded[idx_test]
+    len_train = lengths[idx_train] if lengths is not None else None
+    len_test  = lengths[idx_test]  if lengths is not None else None
 
     X_train_t = torch.tensor(X_train, dtype=torch.float32)
     y_train_t = torch.tensor(y_train, dtype=torch.long)
     X_test_t  = torch.tensor(X_test,  dtype=torch.float32)
     y_test_t  = torch.tensor(y_test,  dtype=torch.long)
 
-    train_loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=batch_size, shuffle=True)
-    test_loader  = DataLoader(TensorDataset(X_test_t,  y_test_t),  batch_size=batch_size, shuffle=False)
+    if lengths is not None:
+        len_train_t = torch.tensor(len_train, dtype=torch.long)
+        len_test_t  = torch.tensor(len_test,  dtype=torch.long)
+        train_ds = TensorDataset(X_train_t, y_train_t, len_train_t)
+        test_ds  = TensorDataset(X_test_t,  y_test_t,  len_test_t)
+    else:
+        train_ds = TensorDataset(X_train_t, y_train_t)
+        test_ds  = TensorDataset(X_test_t,  y_test_t)
 
-    model = BiLSTMClassifier(input_dim=768, hidden_dim=128, num_classes=num_classes).to(device)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False)
+
+    model = BiLSTMClassifier(num_classes=num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
 
     history = {
         'train_loss': [], 'test_loss': [],
         'train_acc':  [], 'test_acc':  []
     }
 
+    best_val_loss = float('inf')
+    best_model_state = None
+    best_epoch = 0
+    epochs_no_improve = 0
+    stopped_early = False
+
     for epoch in range(epochs):
         model.train()
         running_loss, correct, total = 0.0, 0, 0
-        for inputs, labels in train_loader:
+        for batch in train_loader:
+            if lengths is not None:
+                inputs, labels, batch_lens = batch
+                batch_lens = batch_lens.to(device)
+            else:
+                inputs, labels = batch
+                batch_lens = None
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(inputs, batch_lens)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -97,9 +132,15 @@ def run_training(
         model.eval()
         test_loss, correct_test, total_test = 0.0, 0, 0
         with torch.no_grad():
-            for inputs, labels in test_loader:
+            for batch in test_loader:
+                if lengths is not None:
+                    inputs, labels, batch_lens = batch
+                    batch_lens = batch_lens.to(device)
+                else:
+                    inputs, labels = batch
+                    batch_lens = None
                 inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
+                outputs = model(inputs, batch_lens)
                 loss = criterion(outputs, labels)
                 test_loss    += loss.item()
                 _, predicted  = torch.max(outputs.data, 1)
@@ -114,20 +155,52 @@ def run_training(
         history['train_acc'].append(train_acc)
         history['test_acc'].append(test_acc)
 
+        # --- Early stopping check (based on validation loss) ---
+        if test_loss < best_val_loss - min_delta:
+            best_val_loss = test_loss
+            best_model_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch + 1
+            epochs_no_improve = 0
+            improved_marker = " *"
+        else:
+            epochs_no_improve += 1
+            improved_marker = ""
+
         log = (
             f"Epoch [{epoch+1:>2}/{epochs}] "
             f"| Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f} "
-            f"| Val Loss: {test_loss:.4f}, Val Acc: {test_acc:.4f}"
+            f"| Val Loss: {test_loss:.4f}, Val Acc: {test_acc:.4f}{improved_marker}"
         )
         if epoch_callback:
             epoch_callback(epoch + 1, epochs, log)
 
+        if epochs_no_improve >= patience:
+            stopped_early = True
+            stop_log = (
+                f"Early stopping di epoch {epoch+1} "
+                f"(tidak ada peningkatan Val Loss selama {patience} epoch berturut-turut, "
+                f"terbaik: epoch {best_epoch} dengan Val Loss {best_val_loss:.4f})"
+            )
+            if epoch_callback:
+                epoch_callback(epoch + 1, epochs, stop_log)
+            break
+
+    # Muat kembali bobot terbaik (bukan bobot epoch terakhir) sebelum evaluasi akhir
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+
     model.eval()
     all_preds, all_targets = [], []
     with torch.no_grad():
-        for inputs, labels in test_loader:
+        for batch in test_loader:
+            if lengths is not None:
+                inputs, labels, batch_lens = batch
+                batch_lens = batch_lens.to(device)
+            else:
+                inputs, labels = batch
+                batch_lens = None
             inputs, labels = inputs.to(device), labels.to(device)
-            outputs = model(inputs)
+            outputs = model(inputs, batch_lens)
             _, predicted = torch.max(outputs.data, 1)
             all_preds.extend(predicted.cpu().numpy())
             all_targets.extend(labels.cpu().numpy())
@@ -148,4 +221,8 @@ def run_training(
         'class_names':  list(le.classes_),
         'n_train':      len(X_train),
         'n_test':       len(X_test),
+        'y_test': all_targets,
+        'y_pred': all_preds,
+        'best_epoch':   best_epoch,
+        'stopped_early': stopped_early
     }

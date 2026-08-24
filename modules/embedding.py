@@ -15,14 +15,15 @@ def get_model():
     if _model is None:
         _device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         _tokenizer = DistilBertTokenizer.from_pretrained(MODEL_NAME)
-        _model = DistilBertModel.from_pretrained(MODEL_NAME)
+        _model = DistilBertModel.from_pretrained(MODEL_NAME, output_hidden_states=True)  # <- fix 1
         _model = _model.to(_device)
         _model.eval()
     return _tokenizer, _model, _device
 
-def extract_features(text_list: list, progress_callback=None) -> np.ndarray:
+def extract_features(text_list: list, progress_callback=None):
     tokenizer, model, device = get_model()
     all_embeddings = []
+    all_lengths = []
     total_batches = (len(text_list) + BATCH_SIZE - 1) // BATCH_SIZE
 
     for i, start in enumerate(range(0, len(text_list), BATCH_SIZE)):
@@ -42,9 +43,15 @@ def extract_features(text_list: list, progress_callback=None) -> np.ndarray:
         with torch.no_grad():
             output = model(input_ids=input_ids, attention_mask=attention_mask)
 
-        all_embeddings.append(output.last_hidden_state.cpu().numpy())
+        hidden_states = output.hidden_states
+        all_layers = torch.stack(hidden_states[1:], dim=0).mean(dim=0)
+
+        all_embeddings.append(all_layers.cpu().numpy())
+        all_lengths.append(attention_mask.sum(dim=1).cpu().numpy())
 
         if progress_callback:
             progress_callback(i + 1, total_batches, f"Batch {i+1}/{total_batches} selesai diproses...")
 
-    return np.concatenate(all_embeddings, axis=0)
+    embeddings = np.concatenate(all_embeddings, axis=0)
+    lengths = np.concatenate(all_lengths, axis=0)
+    return embeddings, lengths
